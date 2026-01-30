@@ -1,0 +1,7 @@
+{
+  "name": "Artify",
+  "description": "A premium AI image generation platform offering various artistic styles and tier-based quality options using advanced external AI models.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
