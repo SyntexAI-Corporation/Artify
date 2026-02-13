@@ -1,12 +1,14 @@
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Adjustments, Transform, DrawingPath, Language, EditorTool, Layer, AspectRatio, ArtStyle, PlanType } from '../types';
+import { Adjustments, Language, EditorTool, Layer, AspectRatio, ArtStyle, PlanType, DrawingPath } from '../types';
 import { TRANSLATIONS, ASPECT_RATIOS } from '../constants';
 import { generateImage } from '../services/geminiService';
+import { saveToGallery } from '../services/galleryService';
 import { 
   ArrowLeft, Download, RotateCw, FlipHorizontal, FlipVertical, 
   Sliders, Image as ImageIcon, Wand2, PenTool, Undo, Redo, 
   Type, Smile, Layers, Plus, Trash2, Maximize, Check, X, Upload, MoreHorizontal,
-  ZoomIn, ZoomOut, Move, Sparkles, MousePointer2, ImagePlus, Globe, Scan, Loader2, Brush
+  ZoomIn, ZoomOut, Move, Sparkles, MousePointer2, ImagePlus, Globe, Scan, Loader2, Brush, Save
 } from 'lucide-react';
 import { Button } from './ui/Button';
 
@@ -56,7 +58,6 @@ const removeWhiteBackground = (imgSrc: string): Promise<string> => {
         const height = canvas.height;
 
         // BFS Flood Fill to remove background starting from corners
-        // This preserves internal white pixels ("textures") that are not connected to the border
         const queue: number[] = [];
         const visited = new Uint8Array(width * height);
         
@@ -152,7 +153,19 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
 
   const uuid = () => Math.random().toString(36).substr(2, 9);
 
-  // Initialize with passed image if available
+  const fitToScreen = (w: number, h: number) => {
+    const paddingX = 40;
+    const paddingY = 200; 
+    const availableW = window.innerWidth - paddingX;
+    const availableH = window.innerHeight - paddingY;
+    
+    const scaleX = availableW / w;
+    const scaleY = availableH / h;
+    const scale = Math.min(scaleX, scaleY);
+    
+    return Math.min(scale, 1); 
+  };
+
   useEffect(() => {
     if (initialImage && layers.length === 0) {
       const img = new Image();
@@ -161,7 +174,9 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
       img.onload = () => {
          const size = { width: img.width, height: img.height };
          setCanvasSize(size);
-         
+         const zoom = fitToScreen(img.width, img.height);
+         setZoomLevel(zoom);
+
          const bgLayer: Layer = {
            id: 'background',
            type: 'image',
@@ -199,6 +214,13 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
     }
   }, [editorMode]);
 
+  useEffect(() => {
+    const selected = layers.find(l => l.id === selectedLayerId);
+    if (selected?.type === 'text' && selected.style?.color) {
+      setBrushColor(selected.style.color);
+    }
+  }, [selectedLayerId, layers]);
+
   const saveHistory = (newLayers: Layer[], newSize = canvasSize) => {
     if (historyIndex >= 0 && history[historyIndex]) {
        const current = history[historyIndex];
@@ -235,8 +257,8 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
     }
   };
 
-  const handleZoomIn = () => setZoomLevel(prev => Math.min(prev + 0.1, 3));
-  const handleZoomOut = () => setZoomLevel(prev => Math.max(prev - 0.1, 0.5));
+  const handleZoomIn = () => setZoomLevel(prev => Math.min(prev + 0.1, 5));
+  const handleZoomOut = () => setZoomLevel(prev => Math.max(prev - 0.1, 0.1));
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -249,6 +271,8 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
           img.onload = () => {
              const size = { width: img.width, height: img.height };
              setCanvasSize(size);
+             const zoom = fitToScreen(img.width, img.height);
+             setZoomLevel(zoom);
              
              const bgLayer: Layer = {
                id: 'background',
@@ -313,7 +337,8 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
   const addTextLayer = () => {
     if (!newText.trim()) return;
     const ctx = canvasRef.current?.getContext('2d');
-    ctx!.font = "40px sans-serif";
+    // Ensure font matches what is used in renderCanvas/update
+    ctx!.font = "40px Arial"; 
     const textWidth = ctx!.measureText(newText).width;
     
     const layer: Layer = {
@@ -322,7 +347,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
       x: (canvasSize.width - textWidth) / 2,
       y: canvasSize.height / 2,
       width: textWidth,
-      height: 40,
+      height: 40, // Base height for 40px font
       rotation: 0,
       scale: 1,
       visible: true,
@@ -464,10 +489,8 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
        maskCtx.lineCap = 'round';
        maskCtx.lineJoin = 'round';
        
-       // Replay Operations
        aiMaskOperations.forEach(op => {
          if (op.points.length < 1) return;
-         // Since eraser is removed, we only handle 'add' / 'source-over'
          maskCtx.globalCompositeOperation = 'source-over';
          maskCtx.strokeStyle = 'white'; 
          maskCtx.lineWidth = op.size / layer.scale;
@@ -600,7 +623,6 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
         ctx.stroke();
     }
 
-    // AI MASK RENDERING - REDESIGNED
     if (editorMode === 'ai' && (aiMaskOperations.length > 0 || aiActivePath.length > 0)) {
         const maskCanvas = document.createElement('canvas');
         maskCanvas.width = canvas.width;
@@ -611,7 +633,6 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
             maskCtx.lineCap = 'round';
             maskCtx.lineJoin = 'round';
             
-            // Draw Persistent Mask (Opaque)
             aiMaskOperations.forEach(op => {
                if(op.points.length < 1) return;
                maskCtx.globalCompositeOperation = op.type === 'add' ? 'source-over' : 'destination-out';
@@ -623,7 +644,6 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
                maskCtx.stroke();
             });
 
-            // Draw Active Stroke
             if (aiActivePath.length > 0 && activeTool === 'ai_brush') {
                maskCtx.globalCompositeOperation = 'source-over';
                maskCtx.strokeStyle = '#00B4FF';
@@ -634,9 +654,8 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
                maskCtx.stroke();
             }
             
-            // Composite Mask to Main Canvas with Transparency
             ctx.save();
-            ctx.globalAlpha = 0.35; // Uniform transparency for the entire mask
+            ctx.globalAlpha = 0.35; 
             ctx.drawImage(maskCanvas, 0, 0);
             ctx.restore();
         }
@@ -668,24 +687,61 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
     }
 
     const coords = getCanvasCoordinates(e);
+    let hitLayerId = null;
+
+    // Robust Hit Testing taking rotation and scale into account
+    // We iterate backwards to hit the top-most layer first
     for (let i = layers.length - 1; i >= 0; i--) {
        const layer = layers[i];
        if (!layer.visible) continue;
        if (layer.id === 'background') continue; 
 
-       const right = layer.x + layer.width * layer.scale;
-       const bottom = layer.y + layer.height * layer.scale;
-       
-       if (coords.x >= layer.x && coords.x <= right && coords.y >= layer.y && coords.y <= bottom) {
-          setSelectedLayerId(layer.id);
-          dragStartRef.current = coords;
-          if (editorMode === 'manual' && activeTool !== 'adjust') {
-              setActiveTool('adjust');
-          }
-          return; 
+       // 1. Translate click to layer's center
+       const cx = layer.x + layer.width / 2;
+       const cy = layer.y + layer.height / 2;
+       const dx = coords.x - cx;
+       const dy = coords.y - cy;
+
+       // 2. Rotate point backwards
+       const rad = -layer.rotation * (Math.PI / 180);
+       const rx = dx * Math.cos(rad) - dy * Math.sin(rad);
+       const ry = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+       // 3. Scale point backwards
+       const localX = rx / layer.scale;
+       const localY = ry / layer.scale;
+
+       // 4. Check unscaled bounds (centered at 0,0)
+       const halfW = layer.width / 2;
+       const halfH = layer.height / 2;
+
+       if (localX >= -halfW && localX <= halfW && localY >= -halfH && localY <= halfH) {
+           hitLayerId = layer.id;
+           break; 
        }
     }
-    setSelectedLayerId(null);
+
+    if (hitLayerId) {
+        setSelectedLayerId(hitLayerId);
+        dragStartRef.current = coords;
+        
+        const layer = layers.find(l => l.id === hitLayerId);
+        // Switch tool based on layer type if in manual mode
+        if (editorMode === 'manual' && activeTool !== 'crop' && activeTool !== 'draw' && activeTool !== 'ai_brush') {
+            if (layer?.type === 'text') {
+                setActiveTool('text');
+            } else if (activeTool !== 'adjust') {
+                // Keep 'text' tool active if we clicked a text layer (handled above), 
+                // otherwise switch to 'adjust' for images/stickers if not already there.
+                // If we were in 'text' mode and clicked an image, we switch to adjust.
+                setActiveTool('adjust');
+            }
+        }
+    } else {
+        setSelectedLayerId(null);
+        // If we clicked empty space while in text mode, keep tool open to allow adding new text
+        // (Don't auto-close tool on background click)
+    }
   };
   
   const handleDragMove = (e: React.MouseEvent | React.TouchEvent) => {
@@ -856,6 +912,9 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
           if ('brightness' in updates || 'contrast' in updates || 'saturation' in updates || 'blur' in updates || 'hue' in updates || 'sepia' in updates) { 
              return { ...l, style: { ...l.style, filter: { ...l.style?.filter, ...updates as Adjustments } } };
           }
+          if ('style' in updates) {
+              return { ...l, ...updates, style: { ...l.style, ...updates.style } };
+          }
           return { ...l, ...updates };
        }
        return l;
@@ -881,13 +940,31 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
     }
   };
 
-  const handleDownload = () => {
+  const handleExport = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const link = document.createElement('a');
     link.download = `artify-edit-${Date.now()}.png`;
     link.href = canvas.toDataURL('image/png', 1.0);
     link.click();
+  };
+
+  const handleSaveToGallery = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    try {
+        const url = canvas.toDataURL('image/png', 1.0);
+        await saveToGallery({
+            id: crypto.randomUUID(),
+            url: url,
+            type: 'edited',
+            timestamp: Date.now()
+        });
+        alert(t.editorSaved);
+    } catch (e) {
+        console.error("Failed to save to gallery", e);
+        alert("Failed to save to gallery");
+    }
   };
 
   const getSelectedLayer = () => layers.find(l => l.id === selectedLayerId);
@@ -899,16 +976,16 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
         case 'ai_object':
             return (
                 <div className="flex flex-col gap-4 px-4 w-full max-w-md mx-auto">
-                    <h3 className="text-sm font-medium text-violet-300 uppercase tracking-wide">{t.aiTitleGenerate}</h3>
-                    <div className="bg-violet-900/20 p-3 rounded-xl border border-violet-500/30">
-                        <label className="text-xs text-slate-300 mb-2 block font-medium">{t.aiLabelSticker}</label>
+                    <h3 className="text-sm font-medium text-slate-700 dark:text-violet-300 uppercase tracking-wide">{t.aiTitleGenerate}</h3>
+                    <div className="bg-violet-50 dark:bg-violet-900/20 p-3 rounded-xl border border-violet-200 dark:border-violet-500/30">
+                        <label className="text-xs text-slate-600 dark:text-slate-300 mb-2 block font-medium">{t.aiLabelSticker}</label>
                         <div className="flex gap-2">
                             <input 
                                 type="text" 
                                 value={aiPrompt}
                                 onChange={(e) => setAiPrompt(e.target.value)}
                                 placeholder={t.aiPromptPlaceholder}
-                                className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:border-violet-500 outline-none"
+                                className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-900 dark:text-white focus:border-violet-500 outline-none"
                             />
                             <Button 
                                 size="sm" 
@@ -920,8 +997,8 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
                         </div>
                     </div>
                     {selected && selected.id !== 'background' && (
-                        <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 animate-in slide-in-from-bottom-2 fade-in">
-                            <div className="flex justify-between text-xs text-slate-400 mb-2">
+                        <div className="bg-white dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-800 animate-in slide-in-from-bottom-2 fade-in">
+                            <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
                                 <span>{t.aiSizeScale}</span>
                                 <span>{selected.scale.toFixed(1)}x</span>
                             </div>
@@ -931,7 +1008,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
                                 onChange={(e) => updateSelectedLayer({ scale: Number(e.target.value) })}
                                 onMouseUp={() => saveHistory(layers)}
                                 onTouchEnd={() => saveHistory(layers)}
-                                className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                                className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
                             />
                         </div>
                     )}
@@ -941,8 +1018,8 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
         case 'ai_enhance':
             return (
                 <div className="flex flex-col gap-4 px-4 w-full max-w-md mx-auto text-center">
-                    <h3 className="text-sm font-medium text-violet-300 uppercase tracking-wide">{t.aiTitleEnhance}</h3>
-                    <p className="text-xs text-slate-400">{t.aiDescEnhance}</p>
+                    <h3 className="text-sm font-medium text-slate-700 dark:text-violet-300 uppercase tracking-wide">{t.aiTitleEnhance}</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{t.aiDescEnhance}</p>
                     <Button onClick={handleAiEnhance} className="w-full">
                        <Sparkles className="w-4 h-4 mr-2" /> {t.aiBtnEnhance}
                     </Button>
@@ -953,31 +1030,31 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
             return (
                 <div className="flex flex-col gap-4 px-4 w-full max-w-md mx-auto">
                     <div className="text-center">
-                        <h3 className="text-sm font-medium text-violet-300 uppercase tracking-wide">{t.aiImproveTitle}</h3>
-                        <p className="text-xs text-slate-400">{t.aiImproveDesc}</p>
+                        <h3 className="text-sm font-medium text-slate-700 dark:text-violet-300 uppercase tracking-wide">{t.aiImproveTitle}</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{t.aiImproveDesc}</p>
                     </div>
 
                     <div className="space-y-4">
                         <div>
-                             <div className="flex justify-between text-xs text-slate-400 mb-1">
+                             <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
                                 <span>{t.aiBrushSize}</span>
                                 <span>{aiBrushSize}px</span>
                              </div>
                              <input 
                                type="range" min="10" max="120" value={aiBrushSize} 
                                onChange={(e) => setAiBrushSize(Number(e.target.value))}
-                               className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                               className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
                              />
                         </div>
                         <div>
-                             <div className="flex justify-between text-xs text-slate-400 mb-1">
+                             <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
                                 <span>{t.aiStrength}</span>
                                 <span>{(aiStrength * 100).toFixed(0)}%</span>
                              </div>
                              <input 
                                type="range" min="0.2" max="1.0" step="0.1" value={aiStrength} 
                                onChange={(e) => setAiStrength(Number(e.target.value))}
-                               className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                               className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
                              />
                         </div>
                         <div className="flex gap-2 pt-2">
@@ -1011,7 +1088,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
                if (selectedLayerId && selectedLayerId !== 'background') {
                    return (
                        <div className="flex justify-center px-4">
-                           <Button onClick={deleteSelectedLayer} variant="secondary" className="text-red-400 border-red-900/50 bg-red-900/10">
+                           <Button onClick={deleteSelectedLayer} variant="secondary" className="text-red-500 border-red-200 bg-red-50 dark:text-red-400 dark:border-red-900/50 dark:bg-red-900/10">
                                <Trash2 className="w-4 h-4 mr-2" /> {t.editorDeleteObject}
                            </Button>
                        </div>
@@ -1025,21 +1102,22 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
            const targetLayer = layers.find(l => l.id === targetId);
            const currentFilter = targetLayer?.style?.filter || DEFAULT_ADJUSTMENTS;
            const isOverlay = targetId !== 'background';
+           const isTextLayer = targetLayer?.type === 'text';
 
            return (
              <div className="space-y-4 px-4 pb-2">
-               <div className="flex justify-between items-center text-sm text-slate-400 mb-2">
+               <div className="flex justify-between items-center text-sm text-slate-500 dark:text-slate-400 mb-2">
                  <span>{t.editorAdjust}: {targetId === 'background' ? 'Background' : 'Layer'}</span>
                  {isOverlay && (
-                    <button onClick={deleteSelectedLayer} className="text-red-400 text-xs flex items-center gap-1">
+                    <button onClick={deleteSelectedLayer} className="text-red-500 dark:text-red-400 text-xs flex items-center gap-1">
                         <Trash2 className="w-3 h-3" /> {t.editorDeleteLayer}
                     </button>
                  )}
                </div>
 
                {isOverlay && (
-                   <div className="mb-4 pb-4 border-b border-slate-800">
-                      <div className="flex justify-between text-xs text-slate-400 mb-1">
+                   <div className="mb-4 pb-4 border-b border-slate-200 dark:border-slate-800">
+                      <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
                         <span>Size / Scale</span>
                         <span>{targetLayer?.scale?.toFixed(1)}x</span>
                       </div>
@@ -1049,43 +1127,49 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
                         onChange={(e) => updateSelectedLayer({ scale: Number(e.target.value) })}
                         onMouseUp={() => saveHistory(layers)}
                         onTouchEnd={() => saveHistory(layers)}
-                        className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                        className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
                       />
                    </div>
                )}
 
-               <div className="grid grid-cols-1 gap-4">
-                 {[
-                   { key: 'brightness', label: t.editorBrightness, min: 0, max: 200 },
-                   { key: 'contrast', label: t.editorContrast, min: 0, max: 200 },
-                   { key: 'saturation', label: t.editorSaturation, min: 0, max: 200 },
-                   { key: 'blur', label: t.editorBlur, min: 0, max: 20 },
-                 ].map((adj) => {
-                   const val = currentFilter[adj.key as keyof Adjustments];
-                   const defaultVal = adj.key === 'blur' ? 0 : 100;
-                   const displayVal = val ?? defaultVal;
-                   return (
-                     <div key={adj.key}>
-                        <div className="flex justify-between text-xs text-slate-400 mb-1">
-                          <span>{adj.label}</span>
-                          <span>{displayVal}</span>
-                        </div>
-                        <input
-                          type="range" min={adj.min} max={adj.max}
-                          value={displayVal}
-                          onChange={(e) => {
-                            const val = Number(e.target.value);
-                            if (selectedLayerId) updateSelectedLayer({ [adj.key]: val } as any);
-                            else updateBackgroundLayer({ [adj.key]: val } as any);
-                          }}
-                          onMouseUp={() => saveHistory(layers)}
-                          onTouchEnd={() => saveHistory(layers)}
-                          className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
-                        />
-                     </div>
-                   );
-                 })}
-               </div>
+               {/* Only show image adjustments if NOT a text layer */}
+               {!isTextLayer && (
+                   <div className="grid grid-cols-1 gap-4">
+                     {[
+                       { key: 'brightness', label: t.editorBrightness, min: 0, max: 200 },
+                       { key: 'contrast', label: t.editorContrast, min: 0, max: 200 },
+                       { key: 'saturation', label: t.editorSaturation, min: 0, max: 200 },
+                       { key: 'blur', label: t.editorBlur, min: 0, max: 20 },
+                     ].map((adj) => {
+                       const val = currentFilter[adj.key as keyof Adjustments];
+                       const defaultVal = adj.key === 'blur' ? 0 : 100;
+                       const displayVal = val ?? defaultVal;
+                       return (
+                         <div key={adj.key}>
+                            <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+                              <span>{adj.label}</span>
+                              <span>{displayVal}</span>
+                            </div>
+                            <input
+                              type="range" min={adj.min} max={adj.max}
+                              value={displayVal}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                if (selectedLayerId) updateSelectedLayer({ [adj.key]: val } as any);
+                                else updateBackgroundLayer({ [adj.key]: val } as any);
+                              }}
+                              onMouseUp={() => saveHistory(layers)}
+                              onTouchEnd={() => saveHistory(layers)}
+                              className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                            />
+                         </div>
+                       );
+                     })}
+                   </div>
+               )}
+               {isTextLayer && (
+                   <p className="text-center text-xs text-slate-500 py-4">Image adjustments are not available for text layers.</p>
+               )}
              </div>
            );
 
@@ -1106,13 +1190,13 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
                       if (selectedLayerId) updateSelectedLayer(f.filter as any, true);
                       else updateBackgroundLayer(f.filter as any, true);
                   }} className="flex flex-col items-center flex-shrink-0 space-y-2 group">
-                     <div className="w-16 h-16 rounded-lg bg-slate-800 border-2 border-transparent group-hover:border-violet-500 overflow-hidden relative">
+                     <div className="w-16 h-16 rounded-lg bg-slate-200 dark:bg-slate-800 border-2 border-transparent group-hover:border-violet-500 overflow-hidden relative">
                         <div className="absolute inset-0 bg-cover bg-center" style={{ 
                            backgroundImage: imageSrc ? `url(${imageSrc})` : 'none',
                            filter: `brightness(${f.filter.brightness}%) contrast(${f.filter.contrast}%) saturate(${f.filter.saturation}%) sepia(${f.filter.sepia}%) hue-rotate(${f.filter.hue}deg)` 
                         }} />
                      </div>
-                     <span className="text-xs text-slate-400">{f.name}</span>
+                     <span className="text-xs text-slate-500 dark:text-slate-400">{f.name}</span>
                   </button>
                 ))}
              </div>
@@ -1148,18 +1232,18 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
                           width: w,
                           height: h
                       });
-                   }} className="flex flex-col items-center justify-center p-3 rounded-lg bg-slate-800 hover:bg-slate-700 min-w-[70px]">
+                   }} className="flex flex-col items-center justify-center p-3 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 min-w-[70px]">
                       <div className={`border-2 border-slate-400 mb-2 rounded-sm`} 
                            style={{ 
                                width: r.w === 0 ? '16px' : `${Math.min(24, r.w * 3)}px`, 
                                height: r.h === 0 ? '16px' : `${Math.min(24, r.h * 3)}px`,
                                aspectRatio: r.w && r.h ? `${r.w}/${r.h}` : 'auto'
                            }}></div>
-                      <span className="text-xs text-slate-300 whitespace-nowrap">{r.label}</span>
+                      <span className="text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap">{r.label}</span>
                    </button>
                 ))}
                 </div>
-                <div className="flex justify-end border-t border-slate-800 pt-3">
+                <div className="flex justify-end border-t border-slate-200 dark:border-slate-800 pt-3">
                    <Button size="sm" onClick={applyCrop} className="flex items-center gap-2">
                       <Check className="w-4 h-4" /> {t.editorCrop}
                    </Button>
@@ -1168,39 +1252,78 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
            );
 
         case 'text':
+           const isTextSelected = selected?.type === 'text';
+           const currentColor = (isTextSelected && selected!.style?.color) ? selected!.style!.color : brushColor;
+
            return (
              <div className="flex flex-col gap-4 px-4 w-full max-w-md mx-auto">
                <div className="flex gap-2">
                  <input 
+                   key={isTextSelected ? 'edit-mode' : 'create-mode'} 
                    type="text" 
-                   value={newText} 
-                   onChange={(e) => setNewText(e.target.value)}
+                   value={isTextSelected ? (selected!.content as string) : newText} 
+                   onChange={(e) => {
+                       if (isTextSelected) {
+                           // Update content AND width for accurate hit detection
+                           const newContent = e.target.value;
+                           const canvas = canvasRef.current;
+                           const ctx = canvas?.getContext('2d');
+                           let newWidth = selected!.width;
+                           if (ctx && selected!.style) {
+                               ctx.font = `${selected!.style.fontSize || 40}px ${selected!.style.fontFamily || 'Arial'}`;
+                               newWidth = ctx.measureText(newContent).width;
+                           }
+                           updateSelectedLayer({ content: newContent, width: newWidth });
+                       } else {
+                           setNewText(e.target.value);
+                       }
+                   }}
+                   onBlur={() => {
+                       if (isTextSelected) saveHistory(layers);
+                   }}
                    placeholder={t.editorTextPlaceholder}
-                   className="flex-1 bg-slate-800 border-none rounded-lg px-4 text-white focus:ring-1 focus:ring-violet-500"
+                   className="flex-1 bg-slate-100 dark:bg-slate-800 border-none rounded-lg px-4 text-slate-900 dark:text-white focus:ring-1 focus:ring-violet-500"
                  />
-                 <Button size="sm" onClick={addTextLayer}>{t.editorAddText}</Button>
+                 {!isTextSelected && (
+                    <Button size="sm" onClick={addTextLayer}>{t.editorAddText}</Button>
+                 )}
+                 {isTextSelected && (
+                    <Button size="sm" onClick={() => setSelectedLayerId(null)} variant="secondary">Done</Button>
+                 )}
                </div>
                
-               {selected?.type === 'text' && (
+               {isTextSelected && (
                  <div className="py-2">
-                    <div className="flex justify-between text-xs text-slate-400 mb-1">
+                    <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
                        <span>Size</span>
-                       <span>{selected.scale.toFixed(1)}x</span>
+                       <span>{selected!.scale.toFixed(1)}x</span>
                     </div>
                     <input 
                        type="range" min="0.5" max="5" step="0.1"
-                       value={selected.scale}
+                       value={selected!.scale}
                        onChange={(e) => updateSelectedLayer({ scale: Number(e.target.value) })}
                        onMouseUp={() => saveHistory(layers)}
                        onTouchEnd={() => saveHistory(layers)}
-                       className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                       className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
                     />
                  </div>
                )}
 
                <div className="flex gap-2 justify-center">
                   {['#ffffff', '#000000', '#FF5757', '#FFBD59', '#8CFF57', '#5757FF'].map(c => (
-                     <button key={c} onClick={() => setBrushColor(c)} style={{ backgroundColor: c }} className={`w-8 h-8 rounded-full border-2 ${brushColor === c ? 'border-white' : 'border-transparent'}`} />
+                     <button 
+                        key={c} 
+                        onClick={() => {
+                            if (isTextSelected) {
+                                updateSelectedLayer({ style: { color: c } }, true);
+                                setBrushColor(c);
+                            } else {
+                                setBrushColor(c);
+                            }
+                        }} 
+                        style={{ backgroundColor: c }} 
+                        className={`w-8 h-8 rounded-full border-2 ${currentColor === c ? 'border-white scale-110' : 'border-transparent'}`} 
+                     />
                   ))}
                </div>
              </div>
@@ -1211,7 +1334,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
              <div className="px-4 pb-4">
                {selected?.type === 'sticker' && (
                  <div className="mb-4">
-                    <div className="flex justify-between text-xs text-slate-400 mb-1">
+                    <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
                        <span>Sticker Size</span>
                        <span>{selected.scale.toFixed(1)}x</span>
                     </div>
@@ -1221,14 +1344,14 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
                        onChange={(e) => updateSelectedLayer({ scale: Number(e.target.value) })}
                        onMouseUp={() => saveHistory(layers)}
                        onTouchEnd={() => saveHistory(layers)}
-                       className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                       className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
                     />
                  </div>
                )}
 
                <div className="grid grid-cols-7 gap-2">
                   {STICKERS.map(s => (
-                     <button key={s} onClick={() => addStickerLayer(s)} className="text-2xl hover:bg-slate-800 rounded p-2 transition">
+                     <button key={s} onClick={() => addStickerLayer(s)} className="text-2xl hover:bg-slate-100 dark:hover:bg-slate-800 rounded p-2 transition">
                         {s}
                      </button>
                   ))}
@@ -1240,14 +1363,14 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
            return (
              <div className="flex flex-col items-center gap-4 px-4 w-full max-w-md mx-auto">
                <div className="w-full">
-                 <div className="flex justify-between text-xs text-slate-400 mb-1">
+                 <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
                     <span>{t.editorBrushSize}</span>
                     <span>{brushSize}px</span>
                  </div>
                  <input 
                    type="range" min="1" max="50" value={brushSize} 
                    onChange={(e) => setBrushSize(Number(e.target.value))}
-                   className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                   className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
                  />
                </div>
                <div className="flex gap-2 justify-center flex-wrap">
@@ -1269,13 +1392,13 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
                 {layers.slice().reverse().map(l => (
                    <div key={l.id} 
                         onClick={() => setSelectedLayerId(l.id)}
-                        className={`flex items-center justify-between p-3 rounded-xl border ${selectedLayerId === l.id ? 'bg-violet-900/20 border-violet-500' : 'bg-slate-900 border-slate-800'}`}>
+                        className={`flex items-center justify-between p-3 rounded-xl border ${selectedLayerId === l.id ? 'bg-violet-100 dark:bg-violet-900/20 border-violet-500' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'}`}>
                       <div className="flex items-center gap-3">
-                         {l.type === 'image' && <ImageIcon className="w-4 h-4 text-slate-400" />}
-                         {l.type === 'text' && <Type className="w-4 h-4 text-slate-400" />}
-                         {l.type === 'sticker' && <Smile className="w-4 h-4 text-slate-400" />}
-                         {l.type === 'drawing' && <PenTool className="w-4 h-4 text-slate-400" />}
-                         <span className="text-sm font-medium text-slate-200">
+                         {l.type === 'image' && <ImageIcon className="w-4 h-4 text-slate-500 dark:text-slate-400" />}
+                         {l.type === 'text' && <Type className="w-4 h-4 text-slate-500 dark:text-slate-400" />}
+                         {l.type === 'sticker' && <Smile className="w-4 h-4 text-slate-500 dark:text-slate-400" />}
+                         {l.type === 'drawing' && <PenTool className="w-4 h-4 text-slate-500 dark:text-slate-400" />}
+                         <span className="text-sm font-medium text-slate-900 dark:text-slate-200">
                             {l.id === 'background' ? 'Background' : `${l.type} layer`}
                          </span>
                       </div>
@@ -1285,7 +1408,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
                              const newLayers = layers.map(pl => pl.id === l.id ? { ...pl, visible: !pl.visible } : pl);
                              setLayers(newLayers);
                              saveHistory(newLayers);
-                         }} className="text-slate-500 hover:text-white">
+                         }} className="text-slate-500 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white">
                             {l.visible ? '👁️' : '👁️‍🗨️'}
                          </button>
                          {l.id !== 'background' && (
@@ -1294,7 +1417,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
                                 const newLayers = layers.filter(pl => pl.id !== l.id);
                                 setLayers(newLayers);
                                 saveHistory(newLayers);
-                            }} className="text-red-400 hover:text-red-300">
+                            }} className="text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300">
                                <Trash2 className="w-4 h-4" />
                             </button>
                          )}
@@ -1316,7 +1439,6 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
               { id: 'ai_object', icon: ImagePlus, label: t.aiToolAddObject },
               { id: 'ai_enhance', icon: Sparkles, label: t.aiToolEnhance },
               { id: 'ai_brush', icon: Brush, label: t.aiImproveTitle }, 
-              // Eraser removed completely
           ];
 
           return tools.map((tool) => (
@@ -1325,7 +1447,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
                type="button"
                disabled={tool.disabled}
                onClick={() => setActiveTool(activeTool === tool.id ? null : tool.id as ExtendedEditorTool)}
-               className={`flex flex-col items-center justify-center px-4 py-2 min-w-[72px] rounded-xl transition-all ${activeTool === tool.id ? 'text-violet-400 bg-violet-900/10' : 'text-slate-400 hover:text-white hover:bg-white/5'} ${tool.disabled ? 'opacity-30 cursor-not-allowed hover:bg-transparent' : ''}`}
+               className={`flex flex-col items-center justify-center px-4 py-2 min-w-[72px] rounded-xl transition-all ${activeTool === tool.id ? 'text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/10' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5'} ${tool.disabled ? 'opacity-30 cursor-not-allowed hover:bg-transparent' : ''}`}
              >
                 <tool.icon className={`w-6 h-6 mb-1 ${activeTool === tool.id ? 'fill-current opacity-20' : ''}`} />
                 <span className="text-[10px] font-medium uppercase tracking-wider whitespace-nowrap">{tool.label}</span>
@@ -1350,7 +1472,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
               if (tool.action) tool.action();
               else setActiveTool(activeTool === tool.id ? null : tool.id as EditorTool);
            }}
-           className={`flex flex-col items-center justify-center px-4 py-2 min-w-[72px] rounded-xl transition-all ${activeTool === tool.id ? 'text-violet-400' : 'text-slate-500 hover:text-slate-300'}`}
+           className={`flex flex-col items-center justify-center px-4 py-2 min-w-[72px] rounded-xl transition-all ${activeTool === tool.id ? 'text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/10' : 'text-slate-500 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}
          >
             <tool.icon className={`w-6 h-6 mb-1 ${activeTool === tool.id ? 'fill-current opacity-20' : ''}`} />
             <span className="text-[10px] font-medium uppercase tracking-wider whitespace-nowrap">{tool.label}</span>
@@ -1360,36 +1482,36 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
 
   if (editorMode === null) {
       return (
-        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in">
-           <button onClick={onBack} className="absolute top-6 left-6 p-2 text-slate-400 hover:text-white bg-slate-900 rounded-full transition-colors">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in">
+           <button onClick={onBack} className="absolute top-6 left-6 p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-slate-900 rounded-full transition-colors shadow-sm">
               <ArrowLeft className="w-6 h-6" />
            </button>
            
-           <h1 className="text-4xl font-bold text-white mb-2">{t.selectModeTitle}</h1>
-           <p className="text-slate-400 mb-12">{t.selectModeDesc}</p>
+           <h1 className="text-4xl font-bold text-slate-900 dark:text-white mb-2">{t.selectModeTitle}</h1>
+           <p className="text-slate-600 dark:text-slate-400 mb-12">{t.selectModeDesc}</p>
            
            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
               <div 
                   onClick={() => setEditorMode('manual')}
-                  className="group relative cursor-pointer overflow-hidden rounded-3xl bg-slate-900 border border-slate-800 hover:border-slate-600 hover:bg-slate-800/50 transition-all duration-300 p-8 flex flex-col items-center text-center"
+                  className="group relative cursor-pointer overflow-hidden rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all duration-300 p-8 flex flex-col items-center text-center shadow-md hover:shadow-xl"
               >
-                  <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform text-slate-300">
+                  <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform text-slate-500 dark:text-slate-300">
                       <Sliders className="w-10 h-10" />
                   </div>
-                  <h2 className="text-2xl font-bold text-white mb-2">{t.modeManual}</h2>
-                  <p className="text-slate-400">{t.modeManualDesc}</p>
+                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">{t.modeManual}</h2>
+                  <p className="text-slate-600 dark:text-slate-400">{t.modeManualDesc}</p>
               </div>
 
               <div 
                   onClick={() => setEditorMode('ai')}
-                  className="group relative cursor-pointer overflow-hidden rounded-3xl bg-slate-900 border border-violet-900/50 hover:border-violet-500 hover:bg-violet-900/10 transition-all duration-300 p-8 flex flex-col items-center text-center shadow-lg shadow-violet-900/20"
+                  className="group relative cursor-pointer overflow-hidden rounded-3xl bg-white dark:bg-slate-900 border border-violet-200 dark:border-violet-900/50 hover:border-violet-500 dark:hover:border-violet-500 hover:bg-violet-50 dark:hover:bg-violet-900/10 transition-all duration-300 p-8 flex flex-col items-center text-center shadow-md hover:shadow-xl hover:shadow-violet-500/20"
               >
                   <div className="absolute inset-0 bg-gradient-to-br from-violet-600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  <div className="w-20 h-20 bg-violet-600/20 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform text-violet-400 relative z-10">
+                  <div className="w-20 h-20 bg-violet-100 dark:bg-violet-600/20 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform text-violet-600 dark:text-violet-400 relative z-10">
                       <Sparkles className="w-10 h-10" />
                   </div>
-                  <h2 className="text-2xl font-bold text-white mb-2 relative z-10">{t.modeAI}</h2>
-                  <p className="text-slate-400 relative z-10">{t.modeAIDesc}</p>
+                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2 relative z-10">{t.modeAI}</h2>
+                  <p className="text-slate-600 dark:text-slate-400 relative z-10">{t.modeAIDesc}</p>
               </div>
            </div>
         </div>
@@ -1398,19 +1520,19 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
 
   if (layers.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in">
-         <button onClick={() => setEditorMode(null)} className="absolute top-6 left-6 p-2 text-slate-400 hover:text-white bg-slate-900 rounded-full transition-colors">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in">
+         <button onClick={() => setEditorMode(null)} className="absolute top-6 left-6 p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-slate-900 rounded-full transition-colors shadow-sm">
            <ArrowLeft className="w-6 h-6" />
          </button>
          
-         <div onClick={() => fileInputRef.current?.click()} className="w-full max-w-lg aspect-[4/3] border-2 border-dashed border-slate-700 rounded-3xl flex flex-col items-center justify-center bg-slate-900/50 hover:bg-slate-900 transition-colors cursor-pointer group relative overflow-hidden">
+         <div onClick={() => fileInputRef.current?.click()} className="w-full max-w-lg aspect-[4/3] border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-3xl flex flex-col items-center justify-center bg-white dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors cursor-pointer group relative overflow-hidden shadow-sm hover:shadow-md">
             {editorMode === 'ai' && <div className="absolute top-0 right-0 bg-violet-600 text-white text-xs px-3 py-1 rounded-bl-xl font-bold">{t.aiModeBadge}</div>}
             
-            <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform ${editorMode === 'ai' ? 'bg-violet-900/30' : 'bg-slate-800'}`}>
-               <Upload className={`w-10 h-10 ${editorMode === 'ai' ? 'text-violet-400' : 'text-slate-400'}`} />
+            <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform ${editorMode === 'ai' ? 'bg-violet-100 dark:bg-violet-900/30' : 'bg-slate-100 dark:bg-slate-800'}`}>
+               <Upload className={`w-10 h-10 ${editorMode === 'ai' ? 'text-violet-600 dark:text-violet-400' : 'text-slate-500 dark:text-slate-400'}`} />
             </div>
-            <h2 className="text-2xl font-bold text-white mb-2">{t.editorUpload}</h2>
-            <p className="text-slate-400">{t.editorDragDrop}</p>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">{t.editorUpload}</h2>
+            <p className="text-slate-600 dark:text-slate-400">{t.editorDragDrop}</p>
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
          </div>
       </div>
@@ -1418,14 +1540,14 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
   }
 
   return (
-    <div className="fixed inset-0 bg-black flex flex-col z-[100] animate-in slide-in-from-bottom duration-300">
-      <div className="h-16 px-4 flex items-center justify-between bg-slate-950/80 backdrop-blur border-b border-slate-900 z-10 relative">
+    <div className="fixed inset-0 bg-white dark:bg-black flex flex-col z-[100] animate-in slide-in-from-bottom duration-300">
+      <div className="h-16 px-4 flex items-center justify-between bg-white/90 dark:bg-slate-950/80 backdrop-blur border-b border-slate-200 dark:border-slate-900 z-10 relative">
         <div className="flex items-center gap-3">
-            <button onClick={() => { setLayers([]); setHistory([]); setEditorMode(null); }} className="text-slate-400 hover:text-white p-2 hover:bg-white/10 rounded-full transition-colors">
+            <button onClick={() => { setLayers([]); setHistory([]); setEditorMode(null); }} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-colors">
               <X className="w-6 h-6" />
             </button>
             {editorMode === 'ai' && (
-                <span className="px-2 py-0.5 rounded-full bg-violet-900/50 border border-violet-500/30 text-[10px] font-bold text-violet-300 tracking-wider">
+                <span className="px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/50 border border-violet-200 dark:border-violet-500/30 text-[10px] font-bold text-violet-700 dark:text-violet-300 tracking-wider">
                     {t.aiModeBadge}
                 </span>
             )}
@@ -1434,7 +1556,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
         <div className="flex items-center space-x-2">
            <button 
              onClick={toggleLanguage}
-             className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-full transition-colors mr-1"
+             className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-colors mr-1"
              title="Switch Language"
            >
              <Globe className="w-5 h-5" />
@@ -1444,7 +1566,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
              type="button"
              onClick={handleUndo} 
              disabled={historyIndex <= 0}
-             className="p-2 text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400"
+             className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white disabled:opacity-30 disabled:hover:text-slate-500 dark:disabled:hover:text-slate-400"
            >
              <Undo className="w-5 h-5" />
            </button>
@@ -1452,32 +1574,41 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
              type="button"
              onClick={handleRedo} 
              disabled={historyIndex >= history.length - 1}
-             className="p-2 text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400"
+             className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white disabled:opacity-30 disabled:hover:text-slate-500 dark:disabled:hover:text-slate-400"
            >
              <Redo className="w-5 h-5" />
            </button>
-           <Button variant="primary" size="sm" onClick={handleDownload} className="ml-2 !rounded-full !px-6">
-             {t.editorSave}
+           
+           <button 
+             onClick={handleExport}
+             className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-colors mx-1"
+             title={t.editorExport}
+           >
+             <Download className="w-5 h-5" />
+           </button>
+
+           <Button variant="primary" size="sm" onClick={handleSaveToGallery} className="ml-2 !rounded-full !px-6">
+             <Save className="w-4 h-4 mr-2" /> {t.editorSave}
            </Button>
         </div>
       </div>
 
       <div 
-        className="flex-1 overflow-auto relative flex items-center justify-center bg-[#0a0a0a] touch-none"
+        className="flex-1 overflow-auto relative flex items-center justify-center bg-slate-100 dark:bg-[#0a0a0a] touch-none"
         onMouseMove={handleDragMove}
         onMouseUp={handleDragEnd}
         onMouseLeave={handleDragEnd}
         onTouchMove={handleDragMove}
         onTouchEnd={handleDragEnd}
       >
-        <div className="absolute bottom-4 left-4 flex gap-2 z-20 bg-slate-900/80 p-1 rounded-lg backdrop-blur border border-slate-800">
-           <button onClick={handleZoomOut} className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded">
+        <div className="absolute bottom-4 left-4 flex gap-2 z-20 bg-white/80 dark:bg-slate-900/80 p-1 rounded-lg backdrop-blur border border-slate-200 dark:border-slate-800 shadow-sm">
+           <button onClick={handleZoomOut} className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10 rounded">
              <ZoomOut className="w-5 h-5" />
            </button>
-           <div className="px-2 py-2 text-xs font-mono text-slate-400 border-x border-slate-700 min-w-[3rem] text-center">
+           <div className="px-2 py-2 text-xs font-mono text-slate-600 dark:text-slate-400 border-x border-slate-300 dark:border-slate-700 min-w-[3rem] text-center">
              {Math.round(zoomLevel * 100)}%
            </div>
-           <button onClick={handleZoomIn} className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded">
+           <button onClick={handleZoomIn} className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10 rounded">
              <ZoomIn className="w-5 h-5" />
            </button>
         </div>
@@ -1486,7 +1617,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
             <div style={{ width: canvasSize.width, height: canvasSize.height, position: 'relative', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
                 <canvas
                   ref={canvasRef}
-                  className="bg-[#1a1a1a]"
+                  className="bg-white dark:bg-[#1a1a1a]"
                   onMouseDown={handlePointerDown}
                   onTouchStart={handlePointerDown}
                   style={{ cursor: activeTool === 'draw' || activeTool === 'ai_brush' ? 'crosshair' : (selectedLayerId && editorMode === 'manual' ? 'move' : 'default') }}
@@ -1535,11 +1666,11 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({ onBack, language, togg
         <input type="file" ref={importInputRef} className="hidden" accept="image/*" onChange={handleImportLayer} />
       </div>
 
-      <div className="bg-slate-950 border-t border-slate-900 pb-safe transition-all duration-300 z-10">
-        <div className={`transition-all duration-300 ${activeTool ? 'h-auto py-4 border-b border-slate-900' : 'h-0 overflow-hidden'}`}>
+      <div className="bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-900 pb-safe transition-all duration-300 z-10">
+        <div className={`transition-all duration-300 ${activeTool ? 'h-auto py-4 border-b border-slate-200 dark:border-slate-900' : 'h-0 overflow-hidden'}`}>
            {renderToolPanel()}
         </div>
-        <div className="flex justify-between items-center px-2 py-2 bg-slate-950 overflow-x-auto scrollbar-hide">
+        <div className="flex justify-between items-center px-2 py-2 bg-white dark:bg-slate-950 overflow-x-auto scrollbar-hide">
             {renderToolbarItems()}
         </div>
       </div>

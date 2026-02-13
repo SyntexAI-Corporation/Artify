@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Camera, Image as ImageIcon, Copy, Check, Pause, Play, Upload, Globe } from 'lucide-react';
 import { Language } from '../types';
@@ -280,12 +281,12 @@ export const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ onBack, language, 
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col p-6 animate-in slide-in-from-right duration-300">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col p-6 animate-in slide-in-from-right duration-300">
       <div className="max-w-2xl mx-auto w-full space-y-6">
         <div className="flex justify-between items-center">
             <button 
             onClick={onBack}
-            className="text-slate-400 hover:text-white flex items-center transition-colors group w-fit"
+            className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center transition-colors group w-fit"
             >
             <ArrowLeft className="w-5 h-5 mr-2 group-hover:-translate-x-1 transition-transform" />
             {t.back}
@@ -293,7 +294,7 @@ export const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ onBack, language, 
 
             <button 
                 onClick={toggleLanguage}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-300 hover:text-white transition-all border border-slate-700/50"
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-800/50 hover:bg-slate-300 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all border border-slate-300 dark:border-slate-700/50"
             >
                 <Globe className="w-4 h-4" />
                 <span className="text-xs font-bold uppercase tracking-wider">{language}</span>
@@ -301,19 +302,19 @@ export const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ onBack, language, 
         </div>
 
         <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-rose-400">
+          <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-rose-500 dark:from-pink-400 dark:to-rose-400">
             {t.colorAnalyzer}
           </h1>
-          <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-800">
+          <div className="flex bg-white dark:bg-slate-900 rounded-lg p-1 border border-slate-200 dark:border-slate-800">
             <button 
               onClick={() => setMode('camera')}
-              className={`p-2 rounded-md transition-all ${mode === 'camera' ? 'bg-rose-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+              className={`p-2 rounded-md transition-all ${mode === 'camera' ? 'bg-rose-500 text-white shadow-lg' : 'text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
             >
               <Camera className="w-5 h-5" />
             </button>
             <button 
               onClick={() => setMode('image')}
-              className={`p-2 rounded-md transition-all ${mode === 'image' ? 'bg-rose-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+              className={`p-2 rounded-md transition-all ${mode === 'image' ? 'bg-rose-500 text-white shadow-lg' : 'text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
             >
               <ImageIcon className="w-5 h-5" />
             </button>
@@ -323,7 +324,7 @@ export const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ onBack, language, 
         {/* Visualizer Area */}
         <div 
             ref={visualizerRef}
-            className="relative w-full aspect-[4/3] bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-2xl flex items-center justify-center touch-none"
+            className="relative w-full aspect-[4/3] bg-slate-200 dark:bg-slate-900 rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-2xl flex items-center justify-center touch-none"
         >
           
           {mode === 'camera' ? (
@@ -339,7 +340,7 @@ export const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ onBack, language, 
                 <Button 
                   onClick={toggleFreeze}
                   variant="secondary"
-                  className={`backdrop-blur-md border-slate-700/50 hover:bg-black/70 transition-colors ${isFrozen ? 'bg-rose-500/80 text-white' : 'bg-black/50'}`}
+                  className={`backdrop-blur-md border-slate-700/50 hover:bg-black/70 transition-colors ${isFrozen ? 'bg-rose-500/80 text-white' : 'bg-black/50 text-white'}`}
                 >
                   {isFrozen ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
                 </Button>
@@ -347,7 +348,7 @@ export const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ onBack, language, 
             </>
           ) : (
             <div 
-                className="w-full h-full relative bg-[#1a1a1a] flex items-center justify-center"
+                className="w-full h-full relative bg-[#f0f0f0] dark:bg-[#1a1a1a] flex items-center justify-center"
                 onMouseDown={handleInteractStart}
                 onMouseMove={handleInteractMove}
                 onMouseUp={handleInteractEnd}
@@ -364,14 +365,14 @@ export const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ onBack, language, 
               {!hasImage && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div 
-                        className="text-center p-6 pointer-events-auto cursor-pointer rounded-2xl hover:bg-slate-800/50 transition-colors" 
+                        className="text-center p-6 pointer-events-auto cursor-pointer rounded-2xl hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors" 
                         onClick={() => fileInputRef.current?.click()}
                     >
-                        <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 hover:bg-slate-700 transition shadow-lg">
-                            <Upload className="w-8 h-8 text-slate-400" />
+                        <div className="w-16 h-16 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 hover:bg-slate-300 dark:hover:bg-slate-700 transition shadow-lg">
+                            <Upload className="w-8 h-8 text-slate-500 dark:text-slate-400" />
                         </div>
-                        <p className="text-slate-400 font-medium">{t.caPickImage}</p>
-                        <p className="text-slate-600 text-sm mt-1">{t.caDragDrop}</p>
+                        <p className="text-slate-600 dark:text-slate-400 font-medium">{t.caPickImage}</p>
+                        <p className="text-slate-500 dark:text-slate-600 text-sm mt-1">{t.caDragDrop}</p>
                     </div>
                 </div>
               )}
@@ -397,7 +398,7 @@ export const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ onBack, language, 
               {/* Loupe / Color Indicator */}
               {cursorPos && hasImage && (
                   <div 
-                    className="absolute w-20 h-20 rounded-full border-4 border-white shadow-2xl pointer-events-none transform -translate-x-1/2 -translate-y-12 overflow-hidden bg-slate-900 flex items-center justify-center"
+                    className="absolute w-20 h-20 rounded-full border-4 border-white shadow-2xl pointer-events-none transform -translate-x-1/2 -translate-y-12 overflow-hidden bg-slate-100 dark:bg-slate-900 flex items-center justify-center"
                     style={{ left: cursorPos.x, top: cursorPos.y }}
                   >
                       <div className="absolute inset-0" style={{ backgroundColor: colorData.hex }}></div>
@@ -411,28 +412,28 @@ export const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ onBack, language, 
         </div>
 
         {/* Results Panel */}
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl animate-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-xl animate-in slide-in-from-bottom-4 duration-500">
            <div className="flex items-center gap-6 mb-6">
               <div 
-                className="w-24 h-24 rounded-2xl shadow-inner border border-white/10"
+                className="w-24 h-24 rounded-2xl shadow-inner border border-slate-200 dark:border-white/10"
                 style={{ backgroundColor: colorData.hex }}
               ></div>
               <div>
-                 <h2 className="text-2xl font-bold text-white mb-1">{colorData.hex}</h2>
-                 <p className="text-slate-400">{colorData.name}</p>
+                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">{colorData.hex}</h2>
+                 <p className="text-slate-500 dark:text-slate-400">{colorData.name}</p>
               </div>
            </div>
 
            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {Object.entries(colorData).filter(([k]) => k !== 'name').map(([key, value]) => (
-                 <div key={key} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex justify-between items-center group hover:border-slate-600 transition-colors">
+                 <div key={key} className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex justify-between items-center group hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
                     <div>
                        <p className="text-xs font-bold text-slate-500 uppercase">{key}</p>
-                       <p className="text-slate-200 font-mono">{value as string}</p>
+                       <p className="text-slate-900 dark:text-slate-200 font-mono">{value as string}</p>
                     </div>
                     <button 
                       onClick={() => copyToClipboard(value as string, key)}
-                      className="text-slate-500 hover:text-white transition-colors"
+                      className="text-slate-400 hover:text-slate-900 dark:text-slate-500 dark:hover:text-white transition-colors"
                     >
                        {copiedField === key ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
                     </button>

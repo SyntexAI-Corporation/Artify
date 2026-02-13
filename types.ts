@@ -1,3 +1,4 @@
+
 export enum PlanType {
   BASIC = 'basic',
   PLUS = 'plus',
@@ -17,6 +18,7 @@ export enum AspectRatio {
   LANDSCAPE = '4:3',
   WIDE = '16:9',
   TALL = '9:16',
+  INFINITE = 'infinite',
 }
 
 export type Language = 'en' | 'pt';

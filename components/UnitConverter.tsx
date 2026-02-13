@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, ArrowRightLeft, Copy, Check, ChevronDown, Globe } from 'lucide-react';
 import { Language } from '../types';
@@ -101,14 +102,14 @@ const CustomSelect = ({
     <div className="relative min-w-[140px] h-full" ref={ref}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full h-full flex items-center justify-between bg-slate-800 border ${isOpen ? 'border-cyan-500 ring-1 ring-cyan-500/50' : 'border-slate-700'} rounded-2xl pl-5 pr-4 py-4 text-white outline-none transition-all hover:border-slate-600`}
+        className={`w-full h-full flex items-center justify-between bg-white dark:bg-slate-800 border ${isOpen ? 'border-cyan-500 ring-1 ring-cyan-500/50' : 'border-slate-200 dark:border-slate-700'} rounded-2xl pl-5 pr-4 py-4 text-slate-900 dark:text-white outline-none transition-all hover:border-slate-300 dark:hover:border-slate-600`}
       >
         <span className="truncate mr-2 text-left">{getUnitTranslation(value, t)}</span>
         <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-cyan-500' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-slate-900/95 backdrop-blur-xl border border-slate-700/50 rounded-2xl shadow-xl max-h-60 overflow-y-auto scrollbar-hide py-2 animate-in fade-in zoom-in-95 duration-200">
+        <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-700/50 rounded-2xl shadow-xl max-h-60 overflow-y-auto scrollbar-hide py-2 animate-in fade-in zoom-in-95 duration-200">
           {options.map((opt) => (
             <button
               key={opt}
@@ -118,8 +119,8 @@ const CustomSelect = ({
               }}
               className={`w-full text-left px-5 py-3 text-sm transition-colors ${
                 value === opt 
-                  ? 'text-cyan-400 bg-cyan-950/30' 
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  ? 'text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/30' 
+                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               {getUnitTranslation(opt, t)}
@@ -205,12 +206,12 @@ export const UnitConverter: React.FC<UnitConverterProps> = ({ onBack, language, 
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col p-6 animate-in slide-in-from-right duration-300">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col p-6 animate-in slide-in-from-right duration-300">
       <div className="max-w-xl mx-auto w-full space-y-8">
         <div className="flex justify-between items-center">
             <button 
             onClick={onBack}
-            className="text-slate-400 hover:text-white flex items-center transition-colors group w-fit"
+            className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center transition-colors group w-fit"
             >
             <ArrowLeft className="w-5 h-5 mr-2 group-hover:-translate-x-1 transition-transform" />
             {t.back}
@@ -218,14 +219,14 @@ export const UnitConverter: React.FC<UnitConverterProps> = ({ onBack, language, 
 
             <button 
                 onClick={toggleLanguage}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-300 hover:text-white transition-all border border-slate-700/50"
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-800/50 hover:bg-slate-300 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all border border-slate-300 dark:border-slate-700/50"
             >
                 <Globe className="w-4 h-4" />
                 <span className="text-xs font-bold uppercase tracking-wider">{language}</span>
             </button>
         </div>
 
-        <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-teal-400">
+        <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-teal-500 dark:from-cyan-400 dark:to-teal-400">
           {t.unitConverter}
         </h1>
 
@@ -238,7 +239,7 @@ export const UnitConverter: React.FC<UnitConverterProps> = ({ onBack, language, 
               className={`px-4 py-2 rounded-full text-sm font-medium transition-all capitalize ${
                 category === cat 
                   ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/25' 
-                  : 'bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-800 hover:text-slate-200'
+                  : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
               {t[`uc${cat.charAt(0).toUpperCase() + cat.slice(1)}` as keyof typeof t] || cat}
@@ -246,7 +247,7 @@ export const UnitConverter: React.FC<UnitConverterProps> = ({ onBack, language, 
           ))}
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-6">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl space-y-6">
           
           {/* Input Section */}
           <div className="space-y-3">
@@ -256,7 +257,7 @@ export const UnitConverter: React.FC<UnitConverterProps> = ({ onBack, language, 
                 type="number"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                className="flex-1 bg-slate-950 border border-slate-700 rounded-2xl px-5 py-4 text-2xl text-white outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 transition-all placeholder-slate-700"
+                className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-2xl px-5 py-4 text-2xl text-slate-900 dark:text-white outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 transition-all placeholder-slate-400 dark:placeholder-slate-700"
                 placeholder="0"
               />
               <CustomSelect 
@@ -272,7 +273,7 @@ export const UnitConverter: React.FC<UnitConverterProps> = ({ onBack, language, 
           <div className="flex justify-center -my-2 relative z-10">
             <button 
               onClick={handleSwap}
-              className="p-3 bg-slate-800 hover:bg-cyan-500 text-cyan-500 hover:text-white rounded-full border border-slate-700 hover:border-cyan-500 transition-all shadow-lg hover:shadow-cyan-500/30 hover:scale-110 active:scale-95"
+              className="p-3 bg-slate-100 dark:bg-slate-800 hover:bg-cyan-500 text-cyan-500 hover:text-white rounded-full border border-slate-200 dark:border-slate-700 hover:border-cyan-500 transition-all shadow-lg hover:shadow-cyan-500/30 hover:scale-110 active:scale-95"
             >
               <ArrowRightLeft className="w-5 h-5" />
             </button>
@@ -282,11 +283,11 @@ export const UnitConverter: React.FC<UnitConverterProps> = ({ onBack, language, 
           <div className="space-y-3">
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider pl-1">{t.ucResultLabel}</label>
             <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1 bg-slate-950/50 border border-slate-800 rounded-2xl px-5 py-4 text-2xl text-cyan-400 font-bold flex items-center justify-between shadow-inner">
+              <div className="flex-1 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-2xl px-5 py-4 text-2xl text-cyan-600 dark:text-cyan-400 font-bold flex items-center justify-between shadow-inner">
                 <span className="truncate">{result}</span>
                 <button 
                   onClick={handleCopy}
-                  className="ml-2 p-2 hover:bg-slate-800/80 rounded-xl text-slate-500 hover:text-cyan-300 transition-colors"
+                  className="ml-2 p-2 hover:bg-slate-200 dark:hover:bg-slate-800/80 rounded-xl text-slate-400 dark:text-slate-500 hover:text-cyan-500 dark:hover:text-cyan-300 transition-colors"
                   title="Copy"
                 >
                   {copied ? <Check className="w-5 h-5 text-green-500" /> : <Copy className="w-5 h-5" />}

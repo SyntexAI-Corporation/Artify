@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { ArtStyle, PlanType, AspectRatio, Language } from '../types';
 import { STYLE_DETAILS, ASPECT_RATIOS, PLAN_DETAILS, TRANSLATIONS } from '../constants';
@@ -53,20 +54,20 @@ export const Generator: React.FC<GeneratorProps> = ({ plan, onGenerate, isGenera
       {/* Prompt Input */}
       <div className="relative group">
         <div className="absolute -inset-0.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-2xl opacity-30 group-focus-within:opacity-100 transition duration-500 blur"></div>
-        <div className="relative bg-slate-900 rounded-2xl p-4">
+        <div className="relative bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-transparent">
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder={t.promptPlaceholder}
-            className="w-full bg-transparent border-none text-white placeholder-slate-500 focus:ring-0 resize-none h-32 text-lg"
+            className="w-full bg-transparent border-none text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:ring-0 resize-none h-32 text-lg"
             disabled={isGenerating}
           />
-          <div className="flex justify-between items-center mt-2 border-t border-slate-800 pt-3">
+          <div className="flex justify-between items-center mt-2 border-t border-slate-100 dark:border-slate-800 pt-3">
              <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center text-xs text-slate-400 hover:text-white transition-colors bg-slate-800 px-3 py-1.5 rounded-lg"
+                  className="flex items-center text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg"
                   disabled={isGenerating}
                 >
                   <ImageIcon className="w-4 h-4 mr-2" />
@@ -80,7 +81,7 @@ export const Generator: React.FC<GeneratorProps> = ({ plan, onGenerate, isGenera
                   className="hidden"
                 />
              </div>
-             <div className="text-xs text-slate-500">
+             <div className="text-xs text-slate-400 dark:text-slate-500">
                {prompt.length}/500
              </div>
           </div>
@@ -90,7 +91,7 @@ export const Generator: React.FC<GeneratorProps> = ({ plan, onGenerate, isGenera
       {/* Reference Image Preview */}
       {imagePreview && (
         <div className="relative inline-block">
-          <img src={imagePreview} alt="Reference" className="h-24 w-24 object-cover rounded-xl border border-slate-700" />
+          <img src={imagePreview} alt="Reference" className="h-24 w-24 object-cover rounded-xl border border-slate-200 dark:border-slate-700" />
           <button
             type="button"
             onClick={removeImage}
@@ -103,7 +104,7 @@ export const Generator: React.FC<GeneratorProps> = ({ plan, onGenerate, isGenera
 
       {/* Style Selector */}
       <div>
-        <label className="block text-sm font-medium text-slate-400 mb-3 uppercase tracking-wider">{t.styleLabel}</label>
+        <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-3 uppercase tracking-wider">{t.styleLabel}</label>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {(Object.entries(STYLE_DETAILS) as [ArtStyle, typeof STYLE_DETAILS[ArtStyle]][]).map(([key, style]) => {
             const Icon = style.icon;
@@ -115,12 +116,12 @@ export const Generator: React.FC<GeneratorProps> = ({ plan, onGenerate, isGenera
                 onClick={() => setSelectedStyle(key)}
                 className={`flex flex-col items-center justify-center p-4 rounded-xl border transition-all duration-200 ${
                   isSelected
-                    ? 'bg-violet-900/30 border-violet-500 text-white ring-1 ring-violet-500'
-                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:bg-slate-800'
+                    ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-500 text-violet-700 dark:text-white ring-1 ring-violet-500'
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
                 }`}
                 disabled={isGenerating}
               >
-                <Icon className={`w-6 h-6 mb-2 ${isSelected ? 'text-fuchsia-400' : 'text-slate-500'}`} />
+                <Icon className={`w-6 h-6 mb-2 ${isSelected ? 'text-violet-600 dark:text-fuchsia-400' : 'text-slate-400 dark:text-slate-500'}`} />
                 <span className="text-sm font-medium">{t[key as ArtStyle]}</span>
               </button>
             );
@@ -130,7 +131,7 @@ export const Generator: React.FC<GeneratorProps> = ({ plan, onGenerate, isGenera
 
       {/* Aspect Ratio Selector */}
       <div>
-        <label className="block text-sm font-medium text-slate-400 mb-3 uppercase tracking-wider">{t.ratioLabel}</label>
+        <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-3 uppercase tracking-wider">{t.ratioLabel}</label>
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
           {ASPECT_RATIOS.map((ratio) => {
             const Icon = ratio.icon;
@@ -142,8 +143,8 @@ export const Generator: React.FC<GeneratorProps> = ({ plan, onGenerate, isGenera
                 onClick={() => setSelectedRatio(ratio.value)}
                 className={`flex items-center space-x-2 px-4 py-2 rounded-lg border text-sm whitespace-nowrap transition-all ${
                   isSelected
-                    ? 'bg-violet-900/30 border-violet-500 text-white'
-                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                    ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-500 text-violet-700 dark:text-white'
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
                 disabled={isGenerating}
               >
@@ -172,7 +173,7 @@ export const Generator: React.FC<GeneratorProps> = ({ plan, onGenerate, isGenera
           )}
         </Button>
         {!canGenerate && (
-          <p className="text-red-400 text-center mt-2 text-sm">
+          <p className="text-red-500 dark:text-red-400 text-center mt-2 text-sm">
             {t.insufficientTokens}
           </p>
         )}

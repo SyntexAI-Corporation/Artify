@@ -1,3 +1,4 @@
+
 import { PlanType, GenerationConfig, ArtStyle, AspectRatio } from "../types";
 import { STYLE_DETAILS } from "../constants";
 
@@ -15,7 +16,11 @@ const getDimensions = (plan: PlanType, ratio: AspectRatio): { width: number, hei
     case AspectRatio.LANDSCAPE: targetRatio = 4/3; break;
     case AspectRatio.WIDE: targetRatio = 16/9; break;
     case AspectRatio.TALL: targetRatio = 9/16; break;
-    case AspectRatio.SQUARE: default: targetRatio = 1; break;
+    case AspectRatio.SQUARE: 
+    case AspectRatio.INFINITE: // Infinite falls back to square for generation
+    default: 
+        targetRatio = 1; 
+        break;
   }
 
   // Calculate dimensions maintaining the same pixel count (Area) as the square base
@@ -118,7 +123,7 @@ async function generateHuggingFace(prompt: string, signal: AbortSignal): Promise
   return URL.createObjectURL(blob);
 }
 
-// --- MAIN GENERATION FUNCTION ---
+// --- MAIN GENERATION FUNCTION (CORE EXECUTOR) ---
 
 export const generateImage = async (config: GenerationConfig): Promise<string> => {
   const { prompt, style, plan, aspectRatio } = config;
@@ -130,37 +135,58 @@ export const generateImage = async (config: GenerationConfig): Promise<string> =
   const adapterTemplate = `${coreSubject}, realistic proportions, correct anatomy, high detail, clean background, professional style`;
   const finalPrompt = `${adapterTemplate}${styleSuffix}`;
 
-  // Global Timeout for the entire pipeline
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes max for whole pipeline
+  // Execution Helper: Runs a provider with an isolated timeout
+  // This ensures that if one provider hangs, it doesn't abort the controllers for subsequent providers
+  const executeProvider = async (
+    name: string, 
+    fn: (signal: AbortSignal) => Promise<string>,
+    timeoutMs: number = 45000 
+  ): Promise<string> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    
+    try {
+      console.log(`[Artify Core] Attempting Provider: ${name}`);
+      const result = await fn(controller.signal);
+      clearTimeout(timeoutId);
+      return result;
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+         console.warn(`[Artify Core] Provider ${name} timed out after ${timeoutMs}ms`);
+      } else {
+         console.warn(`[Artify Core] Provider ${name} failed:`, error.message || error);
+      }
+      throw error;
+    }
+  };
 
+  // 1. Try Primary: Kie AI
   try {
-    // 1. Try Primary: Kie AI / GPT4
-    try {
-      console.log("Attempting Primary Provider: Kie AI");
-      return await generateKieAI(finalPrompt, style, width, height, controller.signal);
-    } catch (error) {
-      console.warn("Primary provider failed, switching to secondary.", error);
-    }
-
-    // 2. Try Secondary: Pollinations
-    try {
-      console.log("Attempting Secondary Provider: Pollinations");
-      return await generatePollinations(finalPrompt, style, width, height, controller.signal);
-    } catch (error) {
-      console.warn("Secondary provider failed, switching to tertiary.", error);
-    }
-
-    // 3. Try Tertiary: HuggingFace SDXL
-    try {
-      console.log("Attempting Tertiary Provider: HuggingFace");
-      return await generateHuggingFace(finalPrompt, controller.signal);
-    } catch (error) {
-      console.error("Tertiary provider failed.", error);
-      throw new Error("All image generation providers failed. Please try again later.");
-    }
-
-  } finally {
-    clearTimeout(timeoutId);
+    return await executeProvider("KieAI", (signal) => 
+      generateKieAI(finalPrompt, style, width, height, signal)
+    );
+  } catch (e) {
+    // Fallback to next
   }
+
+  // 2. Try Secondary: Pollinations
+  try {
+    return await executeProvider("Pollinations", (signal) => 
+      generatePollinations(finalPrompt, style, width, height, signal)
+    );
+  } catch (e) {
+    // Fallback to next
+  }
+
+  // 3. Try Tertiary: HuggingFace SDXL
+  try {
+    return await executeProvider("HuggingFace", (signal) => 
+      generateHuggingFace(finalPrompt, signal)
+    );
+  } catch (e) {
+    // All failed
+  }
+
+  throw new Error("All image generation providers failed. Please check your connection or try again later.");
 };
